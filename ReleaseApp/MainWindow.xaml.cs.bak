@@ -1,0 +1,1245 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+using System.IO;
+using System.Diagnostics;
+using System.Windows.Media.Animation;
+using System.Data.SqlClient;
+using MySql;
+using MySql.Data.MySqlClient;
+using System.ComponentModel;
+using Microsoft.Win32;
+using System.Threading;
+using System.Windows.Forms.Integration;
+
+
+[assembly: System.Reflection.AssemblyVersion("2.0.3.0")]
+//[assembly: System.Reflection.AssemblyFileVersion("2.0.3.0")]
+namespace ReleaseApp
+{
+    public partial class MainWindow : Window 
+    {
+        
+        TrashCleaner Cleaner;
+        FileOperator fileOperator;
+        ClickCounter clickCounter;
+        ClockManager clockManager;
+        DataBaseManager dataBaseManager;
+
+        //DATA BASE
+        //__________________________________________
+
+        BackgroundWorker worker, worker2, worker3; //worker2 = dla unistalki worker3 = dla istalki
+        SortedDictionary<string, string> market;
+        SortedDictionary<string, string> mode;
+        SortedDictionary<string, string> brands;
+        SortedDictionary<string, int> builde;
+        Dictionary<string, string> BrandtoSoft;
+        List<string> marketIndex;
+        List<CheckBox> checkBoxList;
+        DirectoryInfo[] nameFolders;
+        DoubleAnimation blinkAnimation;
+
+        Stopwatch start_time = Stopwatch.StartNew();
+        public int counter2 = 0;
+        string[] marki = { "Genie", "Oasis", "EXPRESSfit" };
+        string[] procesy_uninstall = { "GenieOticon", "OasisBernafon", "ExpressFitSonic" };
+
+        public MainWindow()
+        {
+            //Tworzenie list/słowników elementów itd.
+            InitializeComponent();
+            initializeElements();
+            bindMarketDictionary();
+
+            //__________Inicjalizacja klas
+            clickCounter = new ClickCounter(8);
+            dataBaseManager = new DataBaseManager(clickCounter, start_time);
+            Cleaner = new TrashCleaner(BrandtoSoft, dataBaseManager);
+            fileOperator = new FileOperator(dataBaseManager, lblG, lblO, lblE, cmbMarket, checkBoxList, marketIndex, imgOticon_Copy, imgBernafon, imgSonic);
+
+            dataBaseManager.getInformation_DB();
+            //======================TESTOWANIE DATY
+            clockManager = new ClockManager();
+            lblTime.Content = clockManager.GetTime();
+
+
+            fileOperator.UpdateLabels();
+           // fileOperator.GetIPFromAbout();
+         //   nazwy_IP_zDirectory = fileOperator.IPFromAbout();
+            verifyInstalledBrands();
+             
+            bindlogmode();
+
+            worker = new BackgroundWorker();
+            worker.DoWork += updateUI;
+            worker.RunWorkerAsync();
+        
+            cbindBrandsToInstall();
+
+            string path = Directory.GetCurrentDirectory();
+            imgSonic.Source = new BitmapImage(new Uri($"{path}/sonic2.png", UriKind.Absolute));
+            imgOticon.Source = new BitmapImage(new Uri($"{path}/oticon2.png", UriKind.Absolute));
+            imgBernafon.Source = new BitmapImage(new Uri($"{path}/bernafon2.png", UriKind.Absolute));
+            
+            btnDelete.IsEnabled = false;
+            btnUpdate.IsEnabled = false;
+            btnLogMode.IsEnabled = false;
+            btnHattori.IsEnabled = false;
+            btnuninstal.IsEnabled = false;
+            btnDeletelogs.IsEnabled = false;
+            btnFS.IsEnabled = false;
+            cmbBrandstoinstall.SelectedIndex = 1; //z difolta dajmy sobie ze genie bedzie wybrane przy inicjalizacji
+            TemporaryToolTipMethod();
+            info.Text = dataBaseManager.GetInformationFromDataBase();
+        }
+        //________________________________________________________________________________________________________________________________________________
+
+        void TemporaryToolTipMethod()
+        {
+            List<string> brands = new List<String>()
+            {
+                "C:/ProgramData/Bernafon/Oasis2/ApplicationVersion.XML",
+                "C:/ProgramData/Sonic/EXPRESSfit2/ApplicationVersion.XML",
+                "C:/ProgramData/Oticon/Genie2/ApplicationVersion.XML"
+            };
+            Image[] images = { imgBernafon, imgSonic, imgOticon_Copy };
+            String[] brandely = { "Oasis", "EF", "Genie" };
+           
+            string about;
+            string directory;
+            int i = 0;
+            foreach (string brand in brands)
+            {
+                about = fileOperator.GetDataFromAbout(brand);
+                directory = dataBaseManager.GetDirectoryName($"'{about}'", brandely[i]);
+                images[i].ToolTip = $"about: {about}\ndir: {directory}";
+                i++;
+            }
+        }
+
+        void bindMarketDictionary()
+        {
+            market = new SortedDictionary<string, string>
+            {
+                { "Australia (AU)", "AU"},
+                { "Denmark (DK)", "DK"},
+                { "Germany (DE)", "DE"},
+                { "United Kingdom (UK)", "UK"},
+                { "United States (US)", "US"},
+                { "Canada (CA)", "CA"},
+                { "Spain (ES)", "ES"},
+                { "New Zeland (NZ)", "NZ"},
+                { "Switzerland (CH)", "CH"},
+                { "Finland (FI)", "FI"},
+                { "France (FR)", "FR"},
+                { "Italy (IT)", "IT"},
+                { "Japan (JP)", "JP"},
+                { "Korea (KR)", "KR"},
+                { "Norway (NO)", "NO"},
+                { "Nederland (NL)", "NL"},
+                { "Brazil (BR)", "BR"},
+                { "Poland (PL)", "PL"},
+                { "Portugal (PT)", "PT"},
+                { "Sweden (SE)", "SE"},
+                { "Singapore (SG)", "SG"},
+                { "PRC China (CN)", "CN"},
+                { "South Africa (ZA)", "ZA"},
+                { "", "NA"}
+            };
+
+            marketIndex = new List<string>()
+            {
+                {"NA"},
+                {"AU"},
+                {"BR"},
+                {"CA"},
+                {"DK"},
+                {"FI"},
+                {"FR"},
+                {"DE"},
+                {"IT"},
+                {"JP"},
+                {"KR"},
+                {"NL"},
+                {"NZ"},
+                {"NO"},
+                {"PL"},
+                {"PT"},
+                {"CN"},
+                {"SG"},
+                {"ZA"},
+                {"ES"},
+                {"SE"},
+                {"CH"},
+                {"UK"},
+                {"US"},
+                {"he"}
+            };
+
+            BrandtoSoft = new Dictionary<string, string>()
+            {
+                {"Oticon", "Genie"},
+                {"Bernafon", "Oasis"},
+                {"Sonic", "ExpressFit"}
+            };
+
+            cmbMarket.ItemsSource = market;
+            cmbMarket.DisplayMemberPath = "Key";
+            cmbMarket.SelectedValuePath = "Value";
+        }
+
+        void initializeElements()
+        {
+            checkBoxList = new List<CheckBox>()
+            {
+                Oticon,
+                Bernafon,
+                Sonic
+            };
+
+            string[] sources =
+            {
+                "C:/ProgramData/Oticon/Common/ManufacturerInfo.XML",
+                "C:/ProgramData/Bernafon/Common/ManufacturerInfo.XML",
+                "C:/ ProgramData/Sonic/Common/ManufacturerInfo.XML"
+            };
+        }
+
+        //________________________________________________________________________________________________________________________________________________
+        private void updateUI(object sender, DoWorkEventArgs e)
+        {
+            for (;;)                                        //Petla, bo watek odpala sie tylko raz xDDD
+            {
+                this.Dispatcher.Invoke((Action)delegate ()  //nie mam pojecia o co tu chodzi
+                {
+                    fileOperator.UpdateLabels();
+                    //this.updateLabels();
+                    this.verifyInstalledBrands();
+                    this.startAnimation();
+                    this.checkInstallationStatus();
+                    this.TemporaryToolTipMethod();
+                });
+                Thread.Sleep(25000);
+            }
+        }
+        private void checkUninstallationStatus(object sender, DoWorkEventArgs e)
+        {
+            bool endThread = true;
+            int counter2 = 0; // aby nie bylo problemu gdy apka jest realasowa i nie inna nazwe procesu
+            while (endThread)                                        
+            {
+                int ile_tru = 0;
+               
+                bool enduninstall = false;
+                this.Dispatcher.Invoke((Action)delegate ()  
+                {
+     
+                    for (int counter = 0; counter < 3; counter++)
+                    {
+                        enduninstall = this.checkRunningProcess(procesy_uninstall[counter]);
+                        if (enduninstall == true)
+                        {
+                            ile_tru++;
+                        }                        
+                    }
+                    counter2++;
+               
+               
+                    if (ile_tru == 3 && counter2 > 1)
+                    {
+                        this.deletesmieci();
+                        endThread = false;
+                    }
+                    else
+                    {
+                        Thread.Sleep(10000);
+                    }
+                        if (ile_tru == 3 && counter2 == 1)
+                        {
+                            Thread.Sleep(90000);
+                            MessageBox.Show("please, delete trash");
+                            endThread = false;
+
+                        }
+                });
+            }
+        }
+
+
+        private bool checkInstallationStatus() // true jezeli nie instaluje sie
+        {
+           
+                int ile_tru = 0;
+                bool endInstall = false;
+               
+                    btninstal.IsEnabled = false;
+                    for (int counter = 0; counter < 3; counter++)
+                    {
+                        endInstall = this.checkRunningProcess(procesy_uninstall[counter]);
+                        if (endInstall == true)
+                        {
+                            ile_tru++;
+                        }
+                    }
+         
+
+
+                    if (ile_tru == 3)
+                    {      
+                        btninstal.IsEnabled = true;
+                    }
+                    else
+                    {
+                        btninstal.IsEnabled = false;
+                    }
+ 
+
+            return endInstall;
+
+
+        }
+
+
+        private void Window_Closing_1(object sender, CancelEventArgs e) // closing window by X button
+        {
+            dataBaseManager.LogToDB();
+        }
+
+        List<string> Get_Data_Log_mode() // Oticon / Bernafon / Sonic
+        {
+            string Ver_Bernafon = "C:/Program Files (x86)/Bernafon/Oasis/Oasis2/Configure.log4net";
+            string Ver_Sonic = "C:/Program Files (x86)/Sonic/ExpressFit/EXPRESSfit2/Configure.log4net";
+            string Ver_Oticon = "C:/Program Files (x86)/Oticon/Genie/Genie2/Configure.log4net";
+            int counter = 0;
+            string[] sources = { Ver_Oticon , Ver_Bernafon, Ver_Sonic };
+            List<string> dd = new List<string>();
+            List<string> modes_log = new List<string>();
+            foreach (var item in sources)
+            {
+                try
+                {
+                    string[] oldFile;
+                    if (File.Exists(item))
+                    {
+                        oldFile = File.ReadAllLines(item);
+                        using (StreamReader sr = new StreamReader(item))
+                        {
+                            foreach (var line in oldFile)
+                            {
+                                if (counter == 23) //tryb logow
+                                {
+                                    string tmp = line;
+                                    int i = 20;
+                                    while (line[i] != '"')
+                                    {
+                                        dd.Add(line[i].ToString());
+                                        i++;
+                                    }
+                                    string dogCsv = string.Join("", dd.ToArray());
+                                    modes_log.Add(dogCsv);
+                                }
+                                counter++;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        modes_log.Add("");
+                    }
+                }
+                catch (Exception)
+                {
+                    
+                }
+
+               
+            }
+
+            return modes_log;
+
+        }
+   
+        void bindlogmode()
+        {
+            mode = new SortedDictionary<string, string>
+            {
+                { "All", "ALL"},
+                { "Debug", "DEBUG"},
+                { "Error", "ERROR"}
+            };
+
+            cmbLogMode.ItemsSource = mode;
+            cmbLogMode.DisplayMemberPath = "Key";
+            cmbLogMode.SelectedValuePath = "Value";
+        }
+
+        void getNamesInstallationFolders(string DirectoryName)
+        {
+            System.IO.DirectoryInfo di = new DirectoryInfo(DirectoryName);
+            nameFolders = di.EnumerateDirectories().ToArray();
+        }
+
+        void cbindBuild(string path)
+        {
+            getNamesInstallationFolders(path);
+
+            builde = new SortedDictionary<string, int>();
+
+            for (int i = 0; i < nameFolders.Length; i++)
+            {
+                builde.Add(nameFolders[i].ToString(), i);
+            }
+
+            cmbBuild.ItemsSource = builde;
+            cmbBuild.DisplayMemberPath = "Key";
+            cmbBuild.SelectedValuePath = "Value";
+  
+            string actual = dataBaseManager.GetActualVersion(cmbBrandstoinstall.SelectedValue.ToString());
+
+            cmbBuild.SelectedIndex = builde[actual];
+        }
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            
+        }
+
+        void cbindBrandsToInstall()
+        {
+            brands = new SortedDictionary<string, string>
+            {
+                { "Genie", "Oticon"},
+                { "Oasis", "Bernafon"},
+                { "EXPRESSfit", "Sonic"}
+            };
+
+            cmbBrandstoinstall.ItemsSource = brands;
+            cmbBrandstoinstall.DisplayMemberPath = "Key";
+            cmbBrandstoinstall.SelectedValuePath = "Value";
+        }
+
+        bool checkBoxes()
+        {
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                if ((bool)checkbox.IsChecked)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void changeMarket(string source)
+        {
+            string[] oldFile;
+            int counter = 0;
+
+            try
+            {
+                oldFile = File.ReadAllLines(source);
+                using (StreamWriter sw = new StreamWriter(source))
+                {
+                    foreach (var line in oldFile)
+                    {
+                        if (counter == 3)
+                        {
+                            sw.WriteLine($"  <MarketName>{cmbMarket.SelectedValue}</MarketName>");
+                        }
+                        else
+                        {
+                            sw.WriteLine(line);
+                        }
+                        counter++;
+                    }
+                }
+            }     
+            catch(FileNotFoundException ex)
+            {
+                dataBaseManager.LogException(ex.ToString(), "changeMarket File Not Found");
+            }
+            catch(DirectoryNotFoundException ee)
+            {
+                dataBaseManager.LogException(ee.ToString(), "changeMarket Directory Not Found");
+            }
+            catch(NullReferenceException e)
+            {
+                dataBaseManager.LogException(e.ToString(), "changeMarket Null Reference");
+            }
+        }
+
+        bool changeLog_Mode(string source)
+        {
+            string[] oldFile;
+            int counter = 0;
+            bool message=false;
+            try
+            {
+                oldFile = File.ReadAllLines(source);
+                using (StreamWriter sw = new StreamWriter(source))
+                {
+                    foreach (var line in oldFile)
+                    {
+                        if (counter == 23) //tryb logow
+                        {
+                            sw.WriteLine($"      <level value=\"{cmbLogMode.SelectedValue}\"/>");     
+                        }
+
+                        if (counter == 34) //rozmiar plikow
+                        {
+                            if (cmbLogMode.SelectedValue.ToString() == "ERROR")
+                            {
+                                sw.WriteLine($"      <maximumFileSize value=\"{5}MB\"/>");
+                            }
+                            if (cmbLogMode.SelectedValue.ToString() == "DEBUG")
+                            {
+                                sw.WriteLine($"      <maximumFileSize value=\"{10}MB\"/>");
+                            }
+                            if (cmbLogMode.SelectedValue.ToString() == "ALL")
+                            {
+                                sw.WriteLine($"      <maximumFileSize value=\"{20}MB\"/>");  
+                            }
+                        }
+
+                        if (counter == 37) //ilosc plikow
+                        {
+                            if (cmbLogMode.SelectedValue.ToString() == "ERROR")
+                            {
+                                sw.WriteLine($"      <maxSizeRollBackups value=\"{5}\"/>");
+                            }
+                            if (cmbLogMode.SelectedValue.ToString() == "DEBUG")
+                            {
+                                sw.WriteLine($"      <maxSizeRollBackups value=\"{10}\"/>");
+                            }
+                            if (cmbLogMode.SelectedValue.ToString() == "ALL")
+                            {
+                                sw.WriteLine($"      <maxSizeRollBackups value=\"{20}\"/>");
+                            }
+                        }
+                        
+                        if (counter != 23 && counter != 37 && counter != 34)
+                        {
+                            sw.WriteLine(line);
+                        }
+                        counter++;
+                    }
+                }
+                
+                message = true;
+                return message;
+            }
+            catch (FileNotFoundException ee)
+            {
+                dataBaseManager.LogException(ee.ToString(), "changeLog_Mode File Not Found");
+                MessageBox.Show("File Not Found");
+                return message;
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                dataBaseManager.LogException(ex.ToString(), "changeLog_Mode Directory Not Found");
+                return message;
+            }
+            catch (NullReferenceException e)
+            {
+                dataBaseManager.LogException(e.ToString(), "changeLog_Mode Null Reference");
+                return message;
+            }
+        }
+
+        bool verifyInstanceOfExec(string name)
+        {
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                if (checkbox.Name == name)
+                {     
+                    if (File.Exists($"C:/Program Files (x86)/{name}/{BrandtoSoft[checkbox.Name]}/{BrandtoSoft[checkbox.Name]}2/{BrandtoSoft[checkbox.Name]}.exe"))
+                    {
+                        return true;
+                    }
+                    else return false;
+                }
+            }
+            return false;
+        }
+
+        void verifyInstalledBrands()
+        {
+            if (!Directory.Exists("C:/ProgramData/Oticon"))
+            {
+                Oticon.IsEnabled = false;
+                lblG.Foreground = new SolidColorBrush(Colors.Red);
+                lblG.Content = "FS not installed";
+                Oticon.IsChecked = false;
+                oticonRectangle.Opacity = 0.2;
+            }
+            else
+            {
+                Oticon.IsEnabled = true;
+                oticonRectangle.Opacity = 1.0;
+            }
+            if (!Directory.Exists("C:/ProgramData/Bernafon"))
+            {
+                Bernafon.IsEnabled = false;
+                lblO.Foreground = new SolidColorBrush(Colors.Red);
+                lblO.Content = "FS not installed";
+                Bernafon.IsChecked = false;
+                bernafonRectangle.Opacity = 0.2;
+            }
+            else
+            {
+                Bernafon.IsEnabled = true;
+                bernafonRectangle.Opacity = 1.0;
+            }
+            if (!Directory.Exists("C:/ProgramData/Sonic"))
+            {
+                Sonic.IsEnabled = false;
+                lblE.Foreground = new SolidColorBrush(Colors.Red);
+                lblE.Content = "FS not installed";
+                Sonic.IsChecked = false;
+                sonicnRectangle.Opacity = 0.2;
+            }
+            else
+            {
+                Sonic.IsEnabled = true;
+                sonicnRectangle.Opacity = 1.0;
+            }
+        }
+
+        bool checkRunningProcess(string name)
+        {
+            Process[] proc = Process.GetProcessesByName(name);
+            Process[] localAll = Process.GetProcesses();
+
+            foreach (Process item in localAll)
+            {
+                string tmop = item.ProcessName;
+                if (tmop == name)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        void startAnimation()
+        {
+            blinkAnimation = new DoubleAnimation
+            {
+                From = 1.0,
+                To = 0.3,
+                Duration = TimeSpan.FromSeconds(1),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            if (Oticon.IsChecked == true)   oticonRectangle.BeginAnimation(Rectangle.OpacityProperty, blinkAnimation);
+            if (Bernafon.IsChecked == true) bernafonRectangle.BeginAnimation(Rectangle.OpacityProperty, blinkAnimation);
+            if (Sonic.IsChecked == true)    sonicnRectangle.BeginAnimation(Rectangle.OpacityProperty, blinkAnimation);
+        }
+
+        void stopAnimation()
+        {
+            blinkAnimation = new DoubleAnimation();
+            if (Oticon.IsChecked == false)   oticonRectangle.BeginAnimation(Rectangle.OpacityProperty, blinkAnimation);
+            if (Bernafon.IsChecked == false) bernafonRectangle.BeginAnimation(Rectangle.OpacityProperty, blinkAnimation);
+            if (Sonic.IsChecked == false)    sonicnRectangle.BeginAnimation(Rectangle.OpacityProperty, blinkAnimation);
+        }
+
+        private void btnUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            bool message = false;
+            int count3 = 0;
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                if ((bool)checkbox.IsChecked)
+                {
+                    if (checkRunningProcess(marki[count3]))
+                    {
+                        changeMarket($"C:/ProgramData/{checkbox.Name}/Common/ManufacturerInfo.XML");
+                    }
+                    else
+                    {
+                        message = true;
+                    }
+                }
+                count3++;
+            }
+            if (message)
+            {
+                MessageBox.Show("Close fitting software", "Brand", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            fileOperator.UpdateLabels();
+            verifyInstalledBrands();
+
+            clickCounter.AddClick((int)Buttons.UpdateMarket);
+        }
+
+
+
+        private void deletesmieci()
+        {
+            try
+            {
+                bool fined = false;
+
+
+                if ((bool)Oticon.IsChecked && checkRunningProcess("Genie") && !verifyInstanceOfExec("Oticon"))
+                {
+                    Directory.Delete("C:/ProgramData/Oticon", true);
+                    Directory.Delete("C:/Program Files (x86)/Oticon", true);
+                    Directory.Delete("C:/Program Files/DGS - PAZE & MIBW/Oticon", true);
+                    fined = true;
+                }
+                if ((bool)Bernafon.IsChecked && checkRunningProcess("Oasis") && !verifyInstanceOfExec("Bernafon"))
+                {
+                    Directory.Delete("C:/ProgramData/Bernafon", true);
+                    Directory.Delete("C:/Program Files (x86)/Bernafon", true);
+                    Directory.Delete("C:/Program Files/DGS - PAZE & MIBW/Bernafon", true);
+                    fined = true;
+                }
+                if ((bool)Sonic.IsChecked && checkRunningProcess("EXPRESSfit") && !verifyInstanceOfExec("Sonic"))
+                {
+
+
+                    Directory.Delete("C:/ProgramData/Sonic", true);
+                    Directory.Delete("C:/Program Files (x86)/Sonic", true);
+                    Directory.Delete("C:/Program Files/DGS - PAZE & MIBW/Sonic", true);
+
+                    //Cleaner.DeleteTrash("C:/ProgramData/Sonic");
+                    //Cleaner.DeleteTrash("C:/Program Files (x86)/Sonic");
+                    //Cleaner.DeleteTrash("C:/Program Files/DGS - PAZE & MIBW/Sonic");
+                    fined = true;
+                }
+                if (!fined)
+                {
+                    MessageBox.Show("Delete FS first.", "Brand", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                else
+                {
+                    MessageBox.Show("Trash deleted successfully!", "deleteTrash", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                fileOperator.UpdateLabels();
+                verifyInstalledBrands();
+            }
+            catch (Exception ee)
+            {
+                dataBaseManager.LogException(ee.ToString(), "btnDelete_Click");
+            }
+
+        }
+
+        private void btnDelete_Click(object sender, RoutedEventArgs e)
+        {
+            deletesmieci();
+        }
+
+        private void btnFS_Click(object sender, RoutedEventArgs e)
+        {
+            int counter_proc = 0;
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                if ((bool)checkbox.IsChecked && File.Exists($"C:/Program Files (x86)/{checkbox.Name}/{BrandtoSoft[checkbox.Name]}/{BrandtoSoft[checkbox.Name]}2/{BrandtoSoft[checkbox.Name]}.exe") && checkRunningProcess(marki[counter_proc]))
+                {
+                 Process.Start($"C:/Program Files (x86)/{checkbox.Name}/{BrandtoSoft[checkbox.Name]}/{BrandtoSoft[checkbox.Name]}2/{BrandtoSoft[checkbox.Name]}.exe");
+                }
+                counter_proc++;
+            }
+            fileOperator.UpdateLabels();
+            verifyInstalledBrands();
+
+            clickCounter.AddClick((int)Buttons.StartFittingSoftware);
+        }
+
+        private void btnHattori_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                if ((bool)checkbox.IsChecked && File.Exists($"C:/Program Files (x86)/{checkbox.Name}/{BrandtoSoft[checkbox.Name]}/FirmwareUpdater/FirmwareUpdater.exe"))
+                 {
+                    Process.Start(($"C:/Program Files (x86)/{checkbox.Name}/{BrandtoSoft[checkbox.Name]}/FirmwareUpdater/FirmwareUpdater.exe"));
+                 }
+           
+                if ((bool)Oticon.IsChecked)
+                {
+                     if (File.Exists("C:/Program Files (x86)/Oticon/FirmwareUpdater/FirmwareUpdater/FirmwareUpdater.exe"))
+                      {
+                         Process.Start("C:/Program Files (x86)/Oticon/FirmwareUpdater/FirmwareUpdater/FirmwareUpdater.exe");
+                      }
+                 }
+            }
+
+            fileOperator.UpdateLabels();
+            verifyInstalledBrands();
+
+            clickCounter.AddClick((int)Buttons.StartHAttori);
+        }
+
+        private void btnuninstal_Click(object sender, RoutedEventArgs e)
+        {
+            byte counter_checkbox = 0;
+            foreach (CheckBox checkbox in checkBoxList)
+            {               
+                if ((bool)checkbox.IsChecked)
+                {
+                    counter_checkbox++;
+                }
+            }
+            if (counter_checkbox > 1)
+            {
+                MessageBox.Show("can not uninstall more than one");
+                return;
+            }
+                int counter_proc = 0;
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                string tmp = $"\"C:\\Program Files\\DGS - PAZE & MIBW\\{checkbox.Name}\\\"";
+                if ((bool)checkbox.IsChecked  &&checkRunningProcess(marki[counter_proc]))
+                {
+                    string tttt = $"\"C:\\Program Files\\DGS - PAZE & MIBW\\{checkbox.Name}\\Setup.exe\"";
+                    if (File.Exists($"C:/Program Files/DGS - PAZE & MIBW/{checkbox.Name}/Setup.exe"))
+                    {
+                        Process.Start(tttt, "/uninstall /quiet");
+                        MessageBox.Show("FS will be uninstalled ASP");
+                    }
+                    else //jeżeli nie było instalowane z apki
+                    {
+                        string actual = dataBaseManager.GetActualVersion(checkbox.Name);
+                        //sciezka szczecin full
+                        string path = @"\\10.128.3.1\DFS_Data_SSC_FS_GenieBuilds\Phoenix\"
+                                    + BrandtoSoft[checkbox.Name] + @"\"
+                                    + actual + @"\" + "Full" + @"\"
+                                    + checkbox.Name + @"\Setup.exe";
+
+                        Directory.CreateDirectory(@"C:\Program Files\DGS - PAZE & MIBW\" + checkbox.Name);                       
+                        string destinationDirectory = @"C:\Program Files\DGS - PAZE & MIBW\" + checkbox.Name + @"\";
+                        File.Copy(path, destinationDirectory + System.IO.Path.GetFileName(path));
+                        if (File.Exists(path))
+                        {
+                            Process.Start(destinationDirectory, "/uninstall /quiet");
+                            MessageBox.Show("FS will be uninstalled ASP");
+                        }
+                    }
+                    worker2 = new BackgroundWorker();
+                    worker2.DoWork += checkUninstallationStatus;
+                    worker2.RunWorkerAsync();
+                    btnuninstal.IsEnabled = false;
+                }
+                counter_proc++;
+            }
+            fileOperator.UpdateLabels();
+            verifyInstalledBrands();
+            clickCounter.AddClick((int)Buttons.UninstallFittingSoftware);
+        }
+
+        private void Brand_Unchecked(object sender, RoutedEventArgs e)
+        {
+            fileOperator.HandleSelectedMarket();
+            if (!checkBoxes())
+            {
+                btnHattori.IsEnabled = false;
+                btnFS.IsEnabled = false;
+                btnDelete.IsEnabled = false;
+                btnUpdate.IsEnabled = false;
+                btnLogMode.IsEnabled = false;
+                btnDeletelogs.IsEnabled = false;
+                btnuninstal.IsEnabled = false;
+            }
+            stopAnimation();
+        }
+
+        private void Brand_Checked(object sender, RoutedEventArgs e)
+        {
+            fileOperator.HandleSelectedMarket();
+            btnHattori.IsEnabled = true;
+            btnFS.IsEnabled = true;
+            btnDelete.IsEnabled = true;
+            btnUpdate.IsEnabled = true;
+            btnLogMode.IsEnabled = true;
+            btnDeletelogs.IsEnabled = true;
+            btnuninstal.IsEnabled = true;
+            startAnimation();
+        }
+
+        private void Button_Click(object sender, RoutedEventArgs e)
+        {
+            if (checkBoxes())
+            {
+                foreach (CheckBox checkbox in checkBoxList)
+                {
+                    int tmp = counter2 % 2;
+                    if (tmp == 0) {
+                        if (checkbox.IsEnabled == true)
+                        {
+                            checkbox.IsChecked = true;
+                        }
+                        
+                    }
+                    else
+                    {
+                        if (checkbox.IsEnabled == true)
+                        {
+                            checkbox.IsChecked = false;
+                        }
+                    }
+                }
+               
+            }
+            else
+            {
+                foreach (CheckBox checkbox in checkBoxList)
+                {
+                    if (checkbox.IsEnabled == true)
+                    {
+                        checkbox.IsChecked = true;
+                    }
+                }
+                btnuninstal.IsEnabled = false;
+            }
+            counter2++;
+
+            clickCounter.AddClick((int)Buttons.All);           
+        }
+
+        private void cmbMarket_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+
+        }
+
+        private void Button_Click_1(object sender, RoutedEventArgs e)
+        {
+
+        }
+
+        private void btnChange_mode_log(object sender, RoutedEventArgs e)
+        {
+            bool message = false;
+            bool changed = false;
+            string[] marki = { "Genie", "Oasis", "EXPRESSfit" };
+            int count3 = 0;
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                if ((bool)checkbox.IsChecked)
+                {
+                    if (checkRunningProcess(marki[count3]))
+                    {
+                        changed = changeLog_Mode($"C:/Program Files (x86)/{checkbox.Name}/{marki[count3]}/{marki[count3]}{"2"}/Configure.log4net"); 
+                    }
+                    else
+                    {
+                        message = true;
+                    }
+                }
+                count3++;
+            }
+            if (message)
+            {
+                MessageBox.Show("Close fitting software", "Brand", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            if (changed && !message)
+            {
+                MessageBox.Show("Updated");
+            }
+            if(!changed && !message)
+            {
+                MessageBox.Show("Error, check file");
+            }
+            fileOperator.UpdateLabels();
+            verifyInstalledBrands();
+            clickCounter.AddClick((int)Buttons.UpdateMode);
+        }
+
+        private void btnDelete_logs(object sender, RoutedEventArgs e)
+        {
+            bool message = false;
+            bool message2 = false;
+            bool deleted = false;
+            int counter_proc = 0;
+            foreach (CheckBox checkbox in checkBoxList)
+            {
+                if ((bool)checkbox.IsChecked) //analiza => jeden zaznaczony dwa nie 
+                {
+                    if (checkRunningProcess(marki[counter_proc]))
+                    {
+                        Cleaner.DeleteLogs(checkbox.Name.ToString());
+                        deleted = true;
+                        MessageBox.Show($" Deleted logs for {checkbox.Name}");
+                    }
+                    else
+                    {
+                        message = true;
+                    }
+                    message2 = false;
+                }
+                else
+                {
+                    message2 = true;
+                }
+                counter_proc++;
+            }
+            if (message2 && !deleted)
+            {
+                MessageBox.Show("Select fitting software", "Brand", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            if (message)
+            {
+                MessageBox.Show("Close fitting software", "Brand", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
+            fileOperator.UpdateLabels();
+            verifyInstalledBrands();
+
+            clickCounter.AddClick((int)Buttons.DeleteLogs);
+        }
+
+        private void cmbLogMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+
+        }
+
+        private void btninstal_Click(object sender, RoutedEventArgs e)
+        {
+            string[] marki = { "ExpressFit", "Genie", "Oasis" };
+            string[] marki_dun = { "EXPRESSFit", "Genie", "Oasis" };
+            bool installation_done = false;
+            if (cmbBrandstoinstall.SelectedIndex > -1 && cmbBuild.SelectedIndex > -1 && checkInstallationStatus())
+           
+            {
+                if (!verifyInstanceOfExec(cmbBrandstoinstall.SelectedValue.ToString()))
+                
+                {
+                    try
+                    {
+                        //sciezka szczecin full
+                        string path = @"\\10.128.3.1\DFS_Data_SSC_FS_GenieBuilds\Phoenix\" 
+                                    + marki[cmbBrandstoinstall.SelectedIndex] + @"\" 
+                                    + cmbBuild.Text + @"\" + "Full" + @"\" 
+                                    + cmbBrandstoinstall.SelectedValue.ToString() + @"\";
+
+                         installation_done = FSInstaller.InstallBrand(path);
+
+                        if (!Directory.Exists(@"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString()))
+                        {
+                            Directory.CreateDirectory(@"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString());
+                            string tmp = path + "Setup.exe";
+                            string destinationDirectory = @"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString() + @"\";
+                            File.Copy(tmp, destinationDirectory + System.IO.Path.GetFileName(tmp));
+                        }
+                        else
+                        {
+                            string tmp = path + "Setup.exe";
+                            string destinationDirectory = @"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString() +@"\";
+                            if (!File.Exists(tmp))
+                            {
+                                File.Copy(tmp, destinationDirectory + System.IO.Path.GetFileName(tmp));
+                            }
+                        }
+
+                    }
+                    catch (Exception ee)
+                    {
+                        dataBaseManager.LogException(ee.ToString(), "btninstal_Click for SSC Full path");
+                        // sciezka szczecin mini
+                       // string path = @"\\10.128.3.1\DFS_Data_SSC_FS_GenieBuilds\Phoenix\" + marki[cmbBrandstoinstall.SelectedIndex] + @"\" + cmbBuild.SelectedValue.ToString() + @"\" + "Mini" + @"\";
+                        string path = $@"\\10.128.3.1\DFS_Data_SSC_FS_GenieBuilds\Phoenix\
+                                        {marki[cmbBrandstoinstall.SelectedIndex]}
+                                        \{cmbBuild.SelectedValue.ToString()}
+                                        \\Mini\";
+                        try
+                        {
+                            string message = "Are you sure, you want install Mini version ?";
+                            string caption = "Build Version Choice";
+                            MessageBoxButton buttons = MessageBoxButton.YesNo;
+
+                            if (Directory.Exists(path))
+                            {
+                                MessageBoxResult result_choice = MessageBox.Show(this, message, caption, buttons);
+
+                                if (result_choice.ToString() == "Yes")
+                                {
+                                    installation_done = true;
+                                    Process.Start(path + "Media.exe");
+
+                                    
+                                }
+                                else
+                                {
+                                    return; // wyjscie z metody ?? No.
+                                }
+                            }
+                        }
+                        catch(Exception e1) {
+                            //sciezka do dunskiego // sprawdzic czy cala ok.
+                            dataBaseManager.LogException(e1.ToString(), "btninstal_Click for SSC Mini path");
+                            try
+                            {
+                                path = @"\\demant.com\data\KBN\RnD\SWS\Build\Projects\" + marki_dun[cmbBrandstoinstall.SelectedIndex] + @"\" + cmbBuild.SelectedValue.ToString() + @"\" + "Full" + @"\" + cmbBrandstoinstall.SelectedValue.ToString() + @"\" + "Setup.exe";
+
+                                installation_done = FSInstaller.InstallBrand(path);
+                                if (!Directory.Exists(@"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString()))
+                                {
+                                    Directory.CreateDirectory(@"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString());
+                                    string tmp = path + "Setup.exe";
+                                    string destinationDirectory = @"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString() + @"\";
+                                    File.Copy(tmp, destinationDirectory + System.IO.Path.GetFileName(tmp));
+                                }
+                                else
+                                {
+                                    string tmp = path + "Setup.exe";
+                                    string destinationDirectory = @"C:\Program Files\DGS - PAZE & MIBW\" + cmbBrandstoinstall.SelectedValue.ToString() + @"\";
+                                    File.Copy(tmp, destinationDirectory + System.IO.Path.GetFileName(tmp));
+                                }
+                               
+
+                            }
+                            catch (Exception e2)
+                            {
+                                dataBaseManager.LogException(e2.ToString(), "btninstal_Click for DKK Full path");
+                                path = @"\\demant.com\data\KBN\RnD\SWS\Build\Projects\" + marki_dun[cmbBrandstoinstall.SelectedIndex] + @"\" + cmbBuild.SelectedValue.ToString() + @"\" + "Mini" + @"\" +  "Media.exe";
+                                try
+                                {
+                                    string message = "Are you sure, you want install Mini version ?";
+                                    string caption = "Build Version Choice";
+                                    MessageBoxButton buttons = MessageBoxButton.YesNo;
+                                    if (Directory.Exists(path))
+                                    {
+                                        MessageBoxResult result_choice = MessageBox.Show(this, message, caption, buttons);
+                                        if (result_choice.ToString() == "Yes")
+                                        {
+                                            installation_done = true;
+                                            Process.Start(path + "Media.exe");
+
+                                        }
+                                        else
+                                        {
+                                            return;
+                                        }
+                                    }
+                                }
+                                catch (Exception e3)
+                                {
+                                    dataBaseManager.LogException(e3.ToString(), "btninstal_Click for DKK Mini path");
+                                }
+                            }   
+                        }
+                    }
+                    if (!installation_done)
+                    {
+                        MessageBox.Show("No Access to File Or Doesnt Exist ");
+                    }
+                    btninstal.IsEnabled = false;
+
+                  }
+                else
+                {
+                    MessageBox.Show("Brand already installed");
+                }     
+            }
+            clickCounter.AddClick((int)Buttons.InstallFittingSoftware);
+        }
+
+        private void cmbbrandstoinstall_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            string[] marki = { "EXPRESSfit", "Genie", "Oasis"  };
+            if (cmbBrandstoinstall.SelectedIndex > -1)
+            {
+                try
+                {
+                    cbindBuild($"//10.128.3.1/DFS_Data_SSC_FS_GenieBuilds/Phoenix/{marki[cmbBrandstoinstall.SelectedIndex]}/");
+                }
+                catch (Exception e1)
+                {
+                    dataBaseManager.LogException(e1.ToString(), "cmbbrandstoinstall_SelectionChanged");
+                    MessageBox.Show("No Access to directory");
+                }
+            }  
+        }
+
+        private void cmbbuild_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+
+        }
+
+        private void LoggingMouseEnter(object sender, MouseEventArgs e)
+        {
+            int border;
+            Border elementLeft, elementRight, buf;
+            buf = new Border();
+            for (int y=0; y<7; ++y)
+            {
+                border = 11;
+                for (int x=0; x<6; ++x)
+                {
+                    elementLeft = Mario.Children.Cast<Border>().FirstOrDefault(b => Grid.GetColumn(b) == x && Grid.GetRow(b) == y);
+                    elementRight = Mario.Children.Cast<Border>().FirstOrDefault(b => Grid.GetColumn(b) == border && Grid.GetRow(b) == y);
+                    buf.Background = elementRight.Background;
+                    elementRight.Background = elementLeft.Background;
+                    elementLeft.Background = buf.Background;
+                    border--;
+                }
+            }
+        }
+
+        private void btnChangeDate_Click(object sender, RoutedEventArgs e)
+        {
+            DateTime dateTime;
+            if (calendar.SelectedDate.HasValue)
+            {
+                dateTime = calendar.SelectedDate.Value;
+                clockManager.SetTime((short)dateTime.Year, (short)dateTime.Month, (short)dateTime.Day);
+            }
+            else
+            {
+                dateTime = DateTime.Now;
+                clockManager.SetTime((short)dateTime.Year, (short)dateTime.Month, (short)dateTime.Day);
+            }
+        }
+
+        private void btnHoursDown_Click(object sender, RoutedEventArgs e)
+        {
+            clockManager.HourDown();
+            lblTime.Content = clockManager.GetTime();
+        }
+
+        private void btnHoursUp_Click(object sender, RoutedEventArgs e)
+        {
+            clockManager.HourUp();
+            lblTime.Content = clockManager.GetTime();
+        }
+
+        private void btnMinutesDown_Click(object sender, RoutedEventArgs e)
+        {
+            clockManager.MinuteDown();
+            lblTime.Content = clockManager.GetTime();
+        }
+
+        private void btnMinutesUp_Click(object sender, RoutedEventArgs e)
+        {
+            clockManager.MinuteUp();
+            lblTime.Content = clockManager.GetTime();
+        }
+
+        private void btnResetDate_Click(object sender, RoutedEventArgs e)
+        {
+            clockManager.ResetTime();
+        }
+
+        private void btnLogToDB_Click(object sender, RoutedEventArgs e)
+        {
+        }
+        private void textBox_TextChanged(object sender, RoutedEventArgs e)
+        {
+        }
+    }
+
+}
